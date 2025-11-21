@@ -110,7 +110,7 @@ async def evaluate_agent(coin_name):
     
     # Wait 10 seconds
     print("Waiting 10 seconds...")
-    await asyncio.sleep(10)
+    await asyncio.sleep(30)
     
     # Get price again
     print("Getting price after 10 seconds...")
