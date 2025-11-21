@@ -35,20 +35,29 @@ def get_brave_api_key():
 
 
 def configure_mcp_servers(brave_api_key):
-    """Configure MCP servers for Brave Search."""
-    mcp_env = os.environ.copy()
-    if brave_api_key:
-        mcp_env["BRAVE_API_KEY"] = brave_api_key
-
+    """Configure MCP servers for Brave Search and CoinGecko."""
     npx_path = shutil.which("npx") or "npx"
-
-    return {
-        "brave-search": McpStdioServerConfig(
-            command=npx_path,
-            args=["-y", "@modelcontextprotocol/server-brave-search"],
-            env=mcp_env
-        )
-    }
+    
+    mcp_servers = {}
+    
+    # Configure Brave Search
+    brave_env = os.environ.copy()
+    if brave_api_key:
+        brave_env["BRAVE_API_KEY"] = brave_api_key
+    mcp_servers["brave-search"] = McpStdioServerConfig(
+        command=npx_path,
+        args=["-y", "@modelcontextprotocol/server-brave-search"],
+        env=brave_env
+    )
+    
+    # Configure CoinGecko Remote Server (no API key required)
+    mcp_servers["coingecko"] = McpStdioServerConfig(
+        command=npx_path,
+        args=["mcp-remote", "https://mcp.api.coingecko.com/sse"],
+        env=os.environ.copy()
+    )
+    
+    return mcp_servers
 
 
 def create_agent_options(system_prompt, mcp_servers):
@@ -86,9 +95,10 @@ async def main():
 
     print(f"MCP servers configured: {list(mcp_servers.keys())}")
     print(f"BRAVE_API_KEY set: {bool(brave_api_key)}")
+    print(f"CoinGecko using remote server (no API key required)")
 
     messages = await query_agent(
-        prompt="Hello! Can you search for the latest news on the stock market?",
+        prompt="Hello! Can you get current price of BTC in USD?",
         options=options
     )
 
