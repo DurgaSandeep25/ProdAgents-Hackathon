@@ -146,33 +146,65 @@ Please analyze the log file and current system prompt, then provide an updated s
         return None, None
 
 
-async def evaluate_decision(coin_name, decision, system_prompt=None):
+async def evaluate_decision(coin_name, decision, system_prompt=None, callback=None):
     """Evaluate a trading decision and return success status."""
     print(f"\n{'='*60}")
     print(f"Evaluating decision: {decision}")
     print(f"{'='*60}")
     
+    if callback:
+        await callback.send_update("status", {"message": f"Evaluating decision: {decision}"})
+    
     # Get price before
     print("Getting current price (T0)...")
+    if callback:
+        await callback.send_update("status", {"message": "Getting current price (T0)..."})
+    
     price_before = await get_coin_price(coin_name)
     if price_before is None:
         print("Failed to get initial price")
+        if callback:
+            await callback.send_update("error", {"message": "Failed to get initial price"})
         return False, None, None
     
     print(f"Price at T0: ${price_before:.2f}")
+    if callback:
+        await callback.send_update("price_update", {
+            "price": price_before,
+            "time": "T0",
+            "label": "Initial Price"
+        })
     
-    # Wait 30 seconds
+    # Wait 30 seconds with countdown updates
     print("Waiting 30 seconds...")
-    await asyncio.sleep(30)
+    if callback:
+        await callback.send_update("status", {"message": "Waiting 30 seconds..."})
+    
+    # Send countdown updates every 5 seconds
+    for i in range(30, 0, -5):
+        await asyncio.sleep(5)
+        if callback:
+            await callback.send_update("countdown", {"seconds_remaining": i})
     
     # Get price after
     print("Getting price after 30 seconds (T1)...")
+    if callback:
+        await callback.send_update("status", {"message": "Getting price after 30 seconds (T1)..."})
+    
     price_after = await get_coin_price(coin_name)
     if price_after is None:
         print("Failed to get price after wait")
+        if callback:
+            await callback.send_update("error", {"message": "Failed to get price after wait"})
         return False, None, None
     
     print(f"Price at T1: ${price_after:.2f}")
+    if callback:
+        await callback.send_update("price_update", {
+            "price": price_after,
+            "time": "T1",
+            "label": "Final Price"
+        })
     
     # Calculate profit
     if decision == "BUY":
@@ -187,6 +219,14 @@ async def evaluate_decision(coin_name, decision, system_prompt=None):
     # Success if profit > 0
     success = profit > 0
     print(f"Result: {'SUCCESS' if success else 'FAILURE'} ({'Profit' if success else 'Loss'})")
+    
+    if callback:
+        await callback.send_update("evaluation_result", {
+            "success": success,
+            "profit": profit,
+            "price_before": price_before,
+            "price_after": price_after
+        })
     
     return success, price_before, price_after
 
@@ -223,7 +263,7 @@ async def run_agent_with_prompt(coin_name, system_prompt):
             pass
 
 
-async def run_with_feedback_loop(coin_name, max_retries=3):
+async def run_with_feedback_loop(coin_name, max_retries=3, callback=None):
     """Run the agent with feedback loop for up to max_retries times."""
     load_env_file()
     
@@ -234,6 +274,13 @@ async def run_with_feedback_loop(coin_name, max_retries=3):
     print(f"Starting runner for {coin_name}")
     print(f"Max retries: {max_retries}")
     print(f"{'='*60}\n")
+    
+    if callback:
+        await callback.send_update("status", {
+            "message": f"Starting runner for {coin_name}",
+            "coin_name": coin_name,
+            "max_retries": max_retries
+        })
     
     attempt = 0
     current_prompt = system_prompt
@@ -246,8 +293,19 @@ async def run_with_feedback_loop(coin_name, max_retries=3):
         print(f"ATTEMPT {attempt}/{max_retries}")
         print(f"{'='*60}\n")
         
+        if callback:
+            await callback.send_update("attempt_start", {
+                "attempt": attempt,
+                "max_retries": max_retries
+            })
+        
         # Run agent with current prompt
         print(f"Running agent with current system prompt...")
+        if callback:
+            await callback.send_update("status", {
+                "message": f"Running agent (Attempt {attempt}/{max_retries})..."
+            })
+        
         agent_result = await run_agent_with_prompt(coin_name, current_prompt)
         
         # Get the latest log file right after agent run
@@ -255,26 +313,55 @@ async def run_with_feedback_loop(coin_name, max_retries=3):
         
         if not agent_result or not agent_result.get("structured_decision"):
             print("Failed to get decision from agent")
+            if callback:
+                await callback.send_update("status", {
+                    "message": "Failed to get decision from agent",
+                    "level": "warning"
+                })
+            
             if attempt < max_retries:
                 print("Will retry with updated prompt...")
+                if callback:
+                    await callback.send_update("status", {
+                        "message": "Will retry with updated prompt..."
+                    })
+                
                 # Still try to update prompt based on failure
                 if log_file:
                     log_content = read_log_file(log_file)
                     if log_content:
+                        if callback:
+                            await callback.send_update("status", {
+                                "message": "Calling Claude to get updated prompt..."
+                            })
+                        
                         updated_prompt, reason = await get_updated_prompt(
                             log_content, current_prompt, coin_name
                         )
                         if updated_prompt:
                             current_prompt = updated_prompt
                             print(f"Updated prompt. Reason: {reason}")
+                            if callback:
+                                await callback.send_update("prompt_updated", {
+                                    "reason": reason,
+                                    "attempt": attempt
+                                })
             continue
         
         decision = agent_result["structured_decision"]["decision"]
+        reason = agent_result["structured_decision"].get("reason", "")
         print(f"Agent decision: {decision}")
+        
+        if callback:
+            await callback.send_update("decision", {
+                "decision": decision,
+                "reason": reason,
+                "attempt": attempt
+            })
         
         # Evaluate the decision
         success, price_before, price_after = await evaluate_decision(
-            coin_name, decision, current_prompt
+            coin_name, decision, current_prompt, callback
         )
         
         if success:
@@ -282,13 +369,35 @@ async def run_with_feedback_loop(coin_name, max_retries=3):
             print("SUCCESS! Decision was profitable.")
             print(f"{'='*60}\n")
             
+            if price_before and price_after:
+                profit = price_after - price_before if decision == "BUY" else price_before - price_after
+                if callback:
+                    await callback.send_update("evaluation", {
+                        "success": True,
+                        "decision": decision,
+                        "price_before": price_before,
+                        "price_after": price_after,
+                        "profit": profit,
+                        "attempt": attempt
+                    })
+            
             # Track successful prompt
             last_successful_prompt = current_prompt
             overall_success = True
             
+            if callback:
+                await callback.send_update("success", {
+                    "message": "Decision was profitable!",
+                    "attempt": attempt
+                })
+            
             # If not the last attempt, continue to next attempt
             if attempt < max_retries:
                 print(f"Continuing to attempt {attempt + 1} with same system prompt...\n")
+                if callback:
+                    await callback.send_update("status", {
+                        "message": f"Continuing to attempt {attempt + 1}..."
+                    })
                 continue
             else:
                 # Last attempt was successful
@@ -299,6 +408,24 @@ async def run_with_feedback_loop(coin_name, max_retries=3):
             print("FAILURE! Decision resulted in a loss.")
             print(f"{'='*60}\n")
             
+            if price_before and price_after:
+                profit = price_after - price_before if decision == "BUY" else price_before - price_after
+                if callback:
+                    await callback.send_update("evaluation", {
+                        "success": False,
+                        "decision": decision,
+                        "price_before": price_before,
+                        "price_after": price_after,
+                        "profit": profit,
+                        "attempt": attempt
+                    })
+            
+            if callback:
+                await callback.send_update("failure", {
+                    "message": "Decision resulted in a loss.",
+                    "attempt": attempt
+                })
+            
             if attempt < max_retries:
                 # Use the log file we already found
                 if log_file:
@@ -307,6 +434,11 @@ async def run_with_feedback_loop(coin_name, max_retries=3):
                     
                     if log_content:
                         print("Calling Claude to get updated prompt...")
+                        if callback:
+                            await callback.send_update("status", {
+                                "message": "Calling Claude to get updated prompt..."
+                            })
+                        
                         updated_prompt, reason = await get_updated_prompt(
                             log_content, current_prompt, coin_name
                         )
@@ -316,6 +448,12 @@ async def run_with_feedback_loop(coin_name, max_retries=3):
                             print(f"Reason: {reason}")
                             current_prompt = updated_prompt
                             print("Will retry with updated prompt...\n")
+                            
+                            if callback:
+                                await callback.send_update("prompt_updated", {
+                                    "reason": reason,
+                                    "attempt": attempt
+                                })
                         else:
                             print("Failed to get updated prompt. Will retry with same prompt...\n")
                     else:
@@ -332,11 +470,23 @@ async def run_with_feedback_loop(coin_name, max_retries=3):
         print(f"\n{'='*60}")
         print("Final successful prompt written to prompts/system.j2")
         print(f"{'='*60}\n")
+        
+        if callback:
+            await callback.send_update("status", {
+                "message": "Final successful prompt written to prompts/system.j2"
+            })
     
     if not overall_success:
         print(f"\n{'='*60}")
         print(f"All {max_retries} attempts exhausted without success.")
         print(f"{'='*60}\n")
+    
+    if callback:
+        await callback.send_update("complete", {
+            "success": overall_success,
+            "attempts": attempt,
+            "coin_name": coin_name
+        })
     
     return overall_success, attempt
 
