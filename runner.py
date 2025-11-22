@@ -175,21 +175,21 @@ async def evaluate_decision(coin_name, decision, system_prompt=None, callback=No
             "label": "Initial Price"
         })
     
-    # Wait 30 seconds with countdown updates
-    print("Waiting 30 seconds...")
+    # Wait 60 seconds with countdown updates
+    print("Waiting 60 seconds...")
     if callback:
-        await callback.send_update("status", {"message": "Waiting 30 seconds..."})
+        await callback.send_update("status", {"message": "Waiting 60 seconds..."})
     
     # Send countdown updates every 5 seconds
-    for i in range(30, 0, -5):
+    for i in range(60, 0, -5):
         await asyncio.sleep(5)
         if callback:
             await callback.send_update("countdown", {"seconds_remaining": i})
     
     # Get price after
-    print("Getting price after 30 seconds (T1)...")
+    print("Getting price after 60 seconds (T1)...")
     if callback:
-        await callback.send_update("status", {"message": "Getting price after 30 seconds (T1)..."})
+        await callback.send_update("status", {"message": "Getting price after 60 seconds (T1)..."})
     
     price_after = await get_coin_price(coin_name)
     if price_after is None:
