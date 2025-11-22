@@ -114,7 +114,7 @@ function LogViewer({ logs, isRunning }) {
 
   const renderLogContent = (log) => {
     const isExpanded = expandedLogs.has(log.id)
-    const canExpand = log.type === 'decision' || log.type === 'evaluation' || log.type === 'evaluation_result' || log.type === 'prompt_updated'
+    const canExpand = log.type === 'decision' || log.type === 'evaluation' || log.type === 'evaluation_result' || log.type === 'prompt_updated' || log.type === 'attempt_start'
     const isLastLog = log.id === logs[logs.length - 1]?.id
 
     return (
@@ -176,6 +176,23 @@ function LogViewer({ logs, isRunning }) {
                     }`}>
                       {log.data.profit >= 0 ? '+' : ''}${log.data.profit.toFixed(2)}
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* System Prompt Display (for attempt_start) */}
+            {log.type === 'attempt_start' && log.data.system_prompt && (
+              <div className={`mt-3 pt-3 border-t border-gray-600/50 transition-all ${isExpanded ? 'block' : 'hidden'}`}>
+                <div className="text-sm text-gray-300">
+                  <div className="font-semibold text-blue-400 mb-2 flex items-center gap-2">
+                    <span>📝</span>
+                    <span>System Prompt (Iteration {log.data.attempt}):</span>
+                  </div>
+                  <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 p-4 rounded-lg border border-blue-500/30">
+                    <pre className="text-xs text-gray-200 whitespace-pre-wrap font-mono leading-relaxed">
+                      {log.data.system_prompt}
+                    </pre>
                   </div>
                 </div>
               </div>

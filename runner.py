@@ -296,7 +296,8 @@ async def run_with_feedback_loop(coin_name, max_retries=3, callback=None):
         if callback:
             await callback.send_update("attempt_start", {
                 "attempt": attempt,
-                "max_retries": max_retries
+                "max_retries": max_retries,
+                "system_prompt": current_prompt
             })
         
         # Run agent with current prompt
