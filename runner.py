@@ -221,7 +221,7 @@ async def evaluate_decision(coin_name, decision, system_prompt=None, callback=No
     print(f"Result: {'SUCCESS' if success else 'FAILURE'} ({'Profit' if success else 'Loss'})")
     
     if callback:
-        await callback.send_update("evaluation_result", {
+        await callback.send_update("evaluation", {
             "success": success,
             "profit": profit,
             "price_before": price_before,
